@@ -2,14 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
+from app.core.logging import get_logger
+from app.core.telemetry import track_cart_items
 from app.models import models
 from app.schemas import schemas
 from app.routers.auth import get_current_user
 
 router = APIRouter()
+logger = get_logger("cart")
 
 @router.get("/", response_model=List[schemas.CartItem])
 def view_cart(current_user: models.User = Depends(get_current_user)):
+    logger.info(f"User {current_user.email} viewed their cart")
     return current_user.cart_items
 
 @router.post("/add", response_model=schemas.CartItem)
@@ -20,6 +24,7 @@ def add_to_cart(
 ):
     product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
     if not product:
+        logger.warning(f"User {current_user.email} tried to add non-existent product {item.product_id}")
         raise HTTPException(status_code=404, detail="Product not found")
     
     cart_item = models.CartItem(
@@ -30,6 +35,10 @@ def add_to_cart(
     db.add(cart_item)
     db.commit()
     db.refresh(cart_item)
+    
+    # Track cart item addition
+    track_cart_items(current_user.id, item.quantity)
+    logger.info(f"User {current_user.email} added {item.quantity} of product {product.name} to cart")
     return cart_item
 
 @router.delete("/{item_id}")
@@ -43,7 +52,12 @@ def remove_from_cart(
         models.CartItem.user_id == current_user.id
     ).first()
     if not cart_item:
+        logger.warning(f"User {current_user.email} tried to remove non-existent cart item {item_id}")
         raise HTTPException(status_code=404, detail="Cart item not found")
+    
+    # Track cart item removal
+    track_cart_items(current_user.id, -cart_item.quantity)
+    logger.info(f"User {current_user.email} removed {cart_item.quantity} of product {cart_item.product.name} from cart")
     
     db.delete(cart_item)
     db.commit()
