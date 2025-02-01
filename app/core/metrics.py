@@ -104,13 +104,8 @@ def setup_metrics():
     """Initialize OpenTelemetry metrics"""
     logger.info("Setting up OpenTelemetry metrics...")
 
-    if (
-        not settings.OTEL_EXPORTER_OTLP_ENDPOINT
-        or not settings.OTEL_EXPORTER_OTLP_HEADERS
-    ):
-        raise ValueError(
-            "OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_HEADERS must be set"
-        )
+    if not settings.OTEL_EXPORTER_OTLP_ENDPOINT:
+        raise ValueError("OTEL_EXPORTER_OTLP_ENDPOINT must be set")
 
     # Configure exporter
     exporter = OTLPMetricExporter(
