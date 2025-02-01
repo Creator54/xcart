@@ -58,56 +58,17 @@ class Settings(BaseSettings):
     MAX_QUANTITY_PER_ITEM: int = 5
 
     # OpenTelemetry settings
+    OTEL_ENABLED: bool = True
+    OTEL_SERVICE_NAME: str = os.getenv("OTEL_RESOURCE_ATTRIBUTES").split("=")[1]
     OTEL_EXPORTER_OTLP_ENDPOINT: str = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT", ""
     ).strip()
     OTEL_EXPORTER_OTLP_HEADERS: str = os.getenv(
         "OTEL_EXPORTER_OTLP_HEADERS", ""
     ).strip()
-    OTEL_RESOURCE_ATTRIBUTES: str = os.getenv(
-        "OTEL_RESOURCE_ATTRIBUTES", "service.name=xcart-v1"
-    ).strip()
-    DEPLOYMENT_ENV: str = os.getenv("DEPLOYMENT_ENV", "development")
-
-    # OpenTelemetry configuration
-    OTEL_SERVICE_NAME: str = (
-        OTEL_RESOURCE_ATTRIBUTES.split("=")[1]
-        if "=" in OTEL_RESOURCE_ATTRIBUTES
-        else "xcart"
-    )
     OTEL_METRIC_EXPORT_INTERVAL_MS: int = 5000
     OTEL_METRIC_EXPORT_TIMEOUT: int = 5
-    OTEL_DEFAULT_METRIC_UNIT: str = "1"
-    OTEL_SERVICE_VERSION: str = APP_VERSION
-    OTEL_SDK_NAME: str = "opentelemetry"
-    OTEL_SDK_LANGUAGE: str = "python"
-    OTEL_USE_TLS: bool = True
-    OTEL_GRPC_PORT: int = 443
-
-    # OpenTelemetry metric names
-    METRIC_HTTP_REQUESTS: str = "http_requests_total"
-    METRIC_HTTP_ERRORS: str = "http_errors_total"
-    METRIC_REQUEST_LATENCY: str = "http_request_duration_ms"
-    METRIC_CART_ITEMS: str = "cart_items_total"
-    METRIC_ORDER_TOTAL: str = "order_total_amount"
-    METRIC_ACTIVE_USERS: str = "active_users"
-
-    # OpenTelemetry metric descriptions
-    METRIC_DESC_HTTP_REQUESTS: str = "Total number of HTTP requests"
-    METRIC_DESC_HTTP_ERRORS: str = "Total number of HTTP errors"
-    METRIC_DESC_REQUEST_LATENCY: str = "HTTP request latency in milliseconds"
-    METRIC_DESC_CART_ITEMS: str = "Total number of items in user carts"
-    METRIC_DESC_ORDER_TOTAL: str = "Total amount of orders placed"
-    METRIC_DESC_ACTIVE_USERS: str = "Number of active users"
-
-    # OpenTelemetry metric units
-    METRIC_UNIT_DEFAULT: str = "1"
-    METRIC_UNIT_MS: str = "ms"
-    METRIC_UNIT_USD: str = "usd"
-
-    # OpenTelemetry logging settings
-    OTEL_LOG_LEVEL: str = "DEBUG"
-    GRPC_LOG_LEVEL: str = "DEBUG"
+    DEPLOYMENT_ENV: str = os.getenv("DEPLOYMENT_ENV", "development")
 
     # Logging settings
     LOG_LEVEL: str = "INFO"
@@ -120,7 +81,7 @@ class Settings(BaseSettings):
 
     @property
     def otel_headers_dict(self) -> Dict[str, str]:
-        """Parse OTLP headers into a dictionary"""
+        """Parse OTLP headers into a dictionary."""
         headers = {}
         if self.OTEL_EXPORTER_OTLP_HEADERS:
             for header in self.OTEL_EXPORTER_OTLP_HEADERS.split(","):
@@ -131,29 +92,19 @@ class Settings(BaseSettings):
 
     @property
     def otel_resource_attributes(self) -> Dict[str, Any]:
-        """Get OpenTelemetry resource attributes"""
+        """Get OpenTelemetry resource attributes."""
         return {
             "service.name": self.OTEL_SERVICE_NAME,
-            "deployment.environment": self.DEPLOYMENT_ENV,
             "service.version": self.APP_VERSION,
-            "telemetry.sdk.name": "opentelemetry",
-            "telemetry.sdk.language": "python",
+            "deployment.environment": self.DEPLOYMENT_ENV,
         }
 
     def get_formatted_endpoint(self) -> str:
-        """Format the OTLP endpoint for gRPC"""
+        """Format the OTLP endpoint for gRPC."""
         endpoint = self.OTEL_EXPORTER_OTLP_ENDPOINT
         if endpoint.startswith(("http://", "https://")):
             endpoint = endpoint.split("://")[1]
         return endpoint
-
-    def get_metric_name(self, metric_name: str) -> str:
-        """Get prefixed metric name with service name"""
-        return f"{self.OTEL_SERVICE_NAME}_{metric_name}"
-    
-    def get_metric_description(self, metric_name: str) -> str:
-        """Get metric description"""
-        return f"{self.OTEL_SERVICE_NAME} {metric_name.replace('_', ' ').capitalize()}"
 
     class Config:
         env_file = ".env"

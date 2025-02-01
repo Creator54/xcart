@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, SessionLocal
-from app.core.middleware import MetricsMiddleware
 from app.core.logging import setup_logging, get_logger
-from app.core.instrumentation import instrument_app
-from app.core.metrics import setup_metrics
+from app.core.telemetry import setup_telemetry, TelemetryMiddleware
 from app.core.config import settings
 from app.models import models
 from app.routers import auth, products, cart, orders
@@ -42,13 +40,7 @@ init_db()
 
 
 def create_app() -> FastAPI:
-    # Initialize logging
-    setup_logging()
     logger.info("Starting XCart application...")
-
-    # Initialize metrics
-    setup_metrics()
-    logger.info("OpenTelemetry metrics initialized")
 
     # Create FastAPI app
     app = FastAPI(
@@ -70,8 +62,8 @@ def create_app() -> FastAPI:
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
 
-    # Add metrics middleware
-    app.add_middleware(MetricsMiddleware)
+    # Add telemetry middleware
+    app.add_middleware(TelemetryMiddleware)
 
     # Include routers
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -88,8 +80,7 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
-# Setup OpenTelemetry instrumentation
-logger.info("Setting up OpenTelemetry instrumentation...")
-instrument_app(app)
+# Setup OpenTelemetry
+setup_telemetry(app)
 
 logger.info("Application startup complete")
