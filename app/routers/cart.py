@@ -4,6 +4,7 @@ from typing import List
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.telemetry import track_cart_items
+from app.core.config import settings
 from app.models import models
 from app.schemas import schemas
 from app.routers.auth import get_current_user
@@ -22,10 +23,22 @@ def add_to_cart(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Check if product exists
     product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
     if not product:
         logger.warning(f"User {current_user.email} tried to add non-existent product {item.product_id}")
         raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Check quantity limits
+    if item.quantity > settings.MAX_QUANTITY_PER_ITEM:
+        logger.warning(f"User {current_user.email} tried to add {item.quantity} items (max: {settings.MAX_QUANTITY_PER_ITEM})")
+        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_QUANTITY_PER_ITEM} items per product allowed")
+    
+    # Check total cart items
+    current_items = len(current_user.cart_items)
+    if current_items >= settings.MAX_CART_ITEMS:
+        logger.warning(f"User {current_user.email} tried to exceed max cart items ({settings.MAX_CART_ITEMS})")
+        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_CART_ITEMS} items in cart allowed")
     
     cart_item = models.CartItem(
         user_id=current_user.id,

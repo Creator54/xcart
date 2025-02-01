@@ -1,10 +1,12 @@
 import logging
 import sys
 from typing import Any, Dict
+from .config import settings
+
 
 class CustomFormatter(logging.Formatter):
     """Custom formatter with colors"""
-    
+
     grey = "\x1b[38;21m"
     blue = "\x1b[38;5;39m"
     yellow = "\x1b[38;5;226m"
@@ -20,7 +22,7 @@ class CustomFormatter(logging.Formatter):
             logging.INFO: self.blue + self.fmt + self.reset,
             logging.WARNING: self.yellow + self.fmt + self.reset,
             logging.ERROR: self.red + self.fmt + self.reset,
-            logging.CRITICAL: self.bold_red + self.fmt + self.reset
+            logging.CRITICAL: self.bold_red + self.fmt + self.reset,
         }
 
     def format(self, record: logging.LogRecord) -> str:
@@ -28,27 +30,31 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
+
 def setup_logging() -> None:
     """Setup logging configuration"""
-    logger = logging.getLogger("xcart")
-    logger.setLevel(logging.INFO)
+    logger = logging.getLogger(settings.OTEL_SERVICE_NAME)
+    logger.setLevel(getattr(logging, settings.LOG_LEVEL))
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    
+    console_handler.setLevel(getattr(logging, settings.LOG_LEVEL))
+
     # Format
-    fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    console_handler.setFormatter(CustomFormatter(fmt))
-    
+    console_handler.setFormatter(CustomFormatter(settings.LOG_FORMAT))
+
     # Add handlers
     logger.addHandler(console_handler)
 
+
 def get_logger(name: str) -> logging.Logger:
     """Get logger instance"""
-    return logging.getLogger(f"xcart.{name}")
+    return logging.getLogger(f"{settings.OTEL_SERVICE_NAME}.{name}")
 
-def log_request_info(logger: logging.Logger, request: Any, extra: Dict[str, Any] = None) -> None:
+
+def log_request_info(
+    logger: logging.Logger, request: Any, extra: Dict[str, Any] = None
+) -> None:
     """Log request information"""
     info = {
         "method": request.method,
@@ -59,12 +65,15 @@ def log_request_info(logger: logging.Logger, request: Any, extra: Dict[str, Any]
         info.update(extra)
     logger.info(f"Request: {info}")
 
-def log_response_info(logger: logging.Logger, response: Any, duration: float, extra: Dict[str, Any] = None) -> None:
+
+def log_response_info(
+    logger: logging.Logger, response: Any, duration: float, extra: Dict[str, Any] = None
+) -> None:
     """Log response information"""
     info = {
         "status_code": response.status_code,
-        "duration_ms": round(duration * 1000, 2)
+        "duration_ms": round(duration * 1000, 2),
     }
     if extra:
         info.update(extra)
-    logger.info(f"Response: {info}") 
+    logger.info(f"Response: {info}")
