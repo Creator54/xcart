@@ -145,9 +145,7 @@ class Settings(BaseSettings):
         endpoint = self.OTEL_EXPORTER_OTLP_ENDPOINT
         if endpoint.startswith(("http://", "https://")):
             endpoint = endpoint.split("://")[1]
-        if not endpoint.endswith(":443"):
-            endpoint = f"{endpoint}:443"
-        return f"https://{endpoint}"
+        return endpoint
 
     def get_metric_name(self, metric_name: str) -> str:
         """Get prefixed metric name with service name"""

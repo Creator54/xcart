@@ -108,11 +108,19 @@ def setup_metrics():
         raise ValueError("OTEL_EXPORTER_OTLP_ENDPOINT must be set")
 
     # Configure exporter
-    exporter = OTLPMetricExporter(
-        endpoint=settings.get_formatted_endpoint(),
-        headers=settings.otel_headers_dict,
-        timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
-    )
+    endpoint = settings.get_formatted_endpoint()
+    if "localhost" in endpoint:
+        exporter = OTLPMetricExporter(
+            endpoint=endpoint,
+            timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
+            insecure=True
+        )
+    else:
+        exporter = OTLPMetricExporter(
+            endpoint=endpoint,
+            headers=settings.otel_headers_dict,
+            timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
+        )
 
     # Configure reader
     reader = PeriodicExportingMetricReader(
@@ -139,5 +147,11 @@ def get_metrics():
     """Get the global metrics instance"""
     global metrics_client
     if metrics_client is None:
-        metrics_client = setup_metrics()
+        try:
+            metrics_client = setup_metrics()
+        except Exception as e:
+            if "Overriding of current MeterProvider is not allowed" not in str(e):
+                raise
+            logger.warning("MeterProvider already initialized, reusing existing instance")
+            metrics_client = Metrics()
     return metrics_client

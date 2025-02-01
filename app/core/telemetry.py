@@ -71,17 +71,22 @@ def setup_telemetry():
     logger.debug(f"OTLP Headers: {settings.OTEL_EXPORTER_OTLP_HEADERS}")
     logger.info(f"Service Name: {settings.OTEL_SERVICE_NAME}")
 
-    if not settings.OTEL_EXPORTER_OTLP_ENDPOINT or not settings.OTEL_EXPORTER_OTLP_HEADERS:
+    if not settings.OTEL_EXPORTER_OTLP_ENDPOINT:
         logger.error("OpenTelemetry configuration missing!")
         raise ValueError(
-            "OpenTelemetry configuration missing. Please set OTEL_EXPORTER_OTLP_ENDPOINT "
-            "and OTEL_EXPORTER_OTLP_HEADERS environment variables."
+            "OpenTelemetry configuration missing. Please set OTEL_EXPORTER_OTLP_ENDPOINT environment variable."
+        )
+
+    # Only require headers for non-localhost connections
+    if "localhost" not in settings.OTEL_EXPORTER_OTLP_ENDPOINT and not settings.OTEL_EXPORTER_OTLP_HEADERS:
+        logger.error("OpenTelemetry headers missing for remote endpoint!")
+        raise ValueError(
+            "OpenTelemetry headers missing. Please set OTEL_EXPORTER_OTLP_HEADERS environment variable."
         )
 
     try:
-        # Parse headers
-        logger.info("Parsing headers...")
-        header_dict = settings.otel_headers_dict
+        # Parse headers if they exist
+        header_dict = {} if "localhost" in settings.OTEL_EXPORTER_OTLP_ENDPOINT else settings.otel_headers_dict
         logger.debug(f"Parsed headers: {header_dict}")
 
         # Configure OTLP exporter
@@ -90,12 +95,18 @@ def setup_telemetry():
         logger.info(f"Using gRPC endpoint: {endpoint}")
 
         # Create exporter
-        exporter = OTLPMetricExporter(
-            endpoint=endpoint,
-            headers=header_dict,
-            timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
-            insecure=not settings.OTEL_USE_TLS,
-        )
+        if "localhost" in endpoint:
+            exporter = OTLPMetricExporter(
+                endpoint=endpoint,
+                timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
+                insecure=True
+            )
+        else:
+            exporter = OTLPMetricExporter(
+                endpoint=endpoint,
+                headers=header_dict,
+                timeout=settings.OTEL_METRIC_EXPORT_TIMEOUT,
+            )
         logger.info("OTLP exporter configured successfully")
 
         # Configure metric reader with debug wrapper
