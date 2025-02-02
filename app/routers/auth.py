@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.core.telemetry import track_user_activity
+from app.core.telemetry import get_telemetry
 from app.models import models
 from app.schemas import schemas
 
@@ -48,7 +48,6 @@ def get_current_user(
             logger.warning(f"User not found: {email}")
             raise HTTPException(status_code=401, detail="User not found")
 
-        track_user_activity(user.id, True)
         return user
     except JWTError as e:
         logger.error(f"Token validation failed: {str(e)}")
@@ -68,7 +67,6 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
 
-    track_user_activity(db_user.id, True)
     logger.info(f"New user registered: {user.email}")
     return db_user
 
@@ -82,7 +80,6 @@ def login(
         logger.warning(f"Login failed: Invalid credentials for {form_data.username}")
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    track_user_activity(user.id, True)
     logger.info(f"User logged in successfully: {user.email}")
     return {
         "access_token": create_access_token({"sub": user.email}),

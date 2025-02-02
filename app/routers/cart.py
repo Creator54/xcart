@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.core.telemetry import track_cart_items
+from app.core.telemetry import get_telemetry
 from app.core.config import settings
 from app.models import models
 from app.schemas import schemas
@@ -38,8 +38,6 @@ def add_to_cart(
     db.commit()
     db.refresh(cart_item)
     
-    # Track cart item addition
-    track_cart_items(current_user.id, item.quantity)
     logger.info(f"User {current_user.email} added {item.quantity} of product {product.name} to cart")
     return cart_item
 
@@ -57,8 +55,6 @@ def remove_from_cart(
         logger.warning(f"User {current_user.email} tried to remove non-existent cart item {item_id}")
         raise HTTPException(status_code=404, detail="Cart item not found")
     
-    # Track cart item removal
-    track_cart_items(current_user.id, -cart_item.quantity)
     logger.info(f"User {current_user.email} removed {cart_item.quantity} of product {cart_item.product.name} from cart")
     
     db.delete(cart_item)

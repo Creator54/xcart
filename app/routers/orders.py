@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.core.telemetry import track_order_total
 from app.core.config import settings
 from app.models import models
 from app.schemas import schemas
 from app.routers.auth import get_current_user
+from app.core.telemetry import get_telemetry
 
 router = APIRouter()
 logger = get_logger("orders")
@@ -25,6 +25,7 @@ def place_order(
         raise HTTPException(status_code=400, detail="Cart is empty")
 
     total_amount = sum(item.quantity * item.product.price for item in cart_items)
+    items_count = sum(item.quantity for item in cart_items)
 
     # Validate minimum order amount
     if total_amount < settings.MIN_ORDER_AMOUNT:
@@ -40,7 +41,6 @@ def place_order(
     db.add(order)
 
     # Clear cart items
-    items_count = len(cart_items)
     db.query(models.CartItem).filter(
         models.CartItem.user_id == current_user.id
     ).delete()
@@ -49,7 +49,8 @@ def place_order(
     db.refresh(order)
 
     # Track order metrics
-    track_order_total(current_user.id, total_amount)
+    if telemetry := get_telemetry():
+        telemetry.track_order(current_user.id, total_amount, items_count)
 
     logger.info(
         f"User {current_user.email} placed order #{order.id} with {items_count} items, total: ${total_amount:.2f}"

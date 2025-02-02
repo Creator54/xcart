@@ -8,93 +8,176 @@ from opentelemetry.sdk.resources import Resource
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from time import time
-import os
+from sqlalchemy import func, and_, Column, Integer, String, DateTime
 from .config import settings
 from .logging import get_logger
+from datetime import datetime, timedelta
 
 logger = get_logger("telemetry")
 
 class Telemetry:
-    """Unified telemetry management."""
+    """Real-time metrics tracking."""
     
     def __init__(self, meter):
         """Initialize telemetry with OpenTelemetry meter."""
         self.meter = meter
         
-        # HTTP metrics
-        self.http_requests = self.meter.create_counter(
-            name=f"{settings.OTEL_SERVICE_NAME}_http_requests",
-            description="Total HTTP requests",
-            unit="1"
+        # Observable Counter: Track error requests in real-time
+        self.error_count = self.meter.create_observable_counter(
+            name=f"{settings.OTEL_SERVICE_NAME}_http_errors_total",
+            description="Total number of HTTP error responses",
+            unit="1",
+            callbacks=[self._observe_errors]
         )
         
-        self.http_errors = self.meter.create_counter(
-            name=f"{settings.OTEL_SERVICE_NAME}_http_errors",
-            description="Total HTTP error requests",
-            unit="1"
-        )
-        
+        # Histogram: Track request latency
         self.request_latency = self.meter.create_histogram(
-            name=f"{settings.OTEL_SERVICE_NAME}_http_latency",
-            description="HTTP request duration",
-            unit="ms"
+            name=f"{settings.OTEL_SERVICE_NAME}_http_request_duration_seconds",
+            description="HTTP request latency in seconds",
+            unit="s"
         )
         
-        # Business metrics
-        self.cart_items = self.meter.create_up_down_counter(
-            name=f"{settings.OTEL_SERVICE_NAME}_cart_items",
-            description="Total items in cart",
-            unit="1"
-        )
-        
-        self.order_total = self.meter.create_counter(
-            name=f"{settings.OTEL_SERVICE_NAME}_order_total",
-            description="Total order amount",
-            unit="usd"
-        )
-        
-        self.active_users = self.meter.create_up_down_counter(
-            name=f"{settings.OTEL_SERVICE_NAME}_active_users",
-            description="Total active users",
-            unit="1"
+        # Gauge: Track cart items in real-time
+        self.cart_items = self.meter.create_observable_gauge(
+            name=f"{settings.OTEL_SERVICE_NAME}_cart_items_total",
+            description="Current number of items in cart",
+            unit="1",
+            callbacks=[self._observe_cart_items]
         )
 
-    def track_request(self, method: str, path: str, status_code: int, duration_ms: float):
-        """Track HTTP request metrics."""
+        # Store errors in database
+        from app.core.database import Base, engine
+        class ErrorMetric(Base):
+            __tablename__ = "error_metrics"
+            id = Column(Integer, primary_key=True, index=True)
+            method = Column(String)
+            path = Column(String)
+            status_code = Column(Integer)
+            error_type = Column(String)
+            timestamp = Column(DateTime(timezone=True), server_default=func.now())
+        Base.metadata.create_all(bind=engine)
+        self.ErrorMetric = ErrorMetric
+
+    def _observe_errors(self, options):
+        """Real-time observer for error metrics from database."""
         try:
-            attributes = {
-                "method": method,
-                "path": path,
-                "status_code": str(status_code)
-            }
+            from app.core.database import SessionLocal
             
-            # Track all requests
-            self.http_requests.add(1, attributes)
-            self.request_latency.record(duration_ms, attributes)
-            
-            # Track error requests (4xx and 5xx)
-            if status_code >= 400:
-                error_attributes = {
-                    **attributes,
-                    "error_type": "client" if status_code < 500 else "server"
-                }
-                logger.info(f"Recording error metric - Method: {method}, Path: {path}, Status: {status_code}")
-                self.http_errors.add(1, error_attributes)
+            db = SessionLocal()
+            try:
+                # Only count errors from the last minute
+                one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
                 
+                # Get error counts grouped by method, path, status_code, and error_type
+                results = db.query(
+                    self.ErrorMetric.method,
+                    self.ErrorMetric.path,
+                    self.ErrorMetric.status_code,
+                    self.ErrorMetric.error_type,
+                    func.count().label('total')
+                ).filter(
+                    self.ErrorMetric.timestamp >= one_minute_ago
+                ).group_by(
+                    self.ErrorMetric.method,
+                    self.ErrorMetric.path,
+                    self.ErrorMetric.status_code,
+                    self.ErrorMetric.error_type
+                ).all()
+
+                # Return measurements for each error type
+                return [
+                    metrics.Observation(
+                        value=int(total),
+                        attributes={
+                            "method": method,
+                            "path": path,
+                            "status_code": str(status_code),
+                            "error_type": error_type
+                        }
+                    )
+                    for method, path, status_code, error_type, total in results
+                ] or [metrics.Observation(value=0, attributes={
+                    "method": "GET",
+                    "path": "/",
+                    "status_code": "200",
+                    "error_type": "none"
+                })]
+
+            finally:
+                db.close()
         except Exception as e:
-            logger.error(f"Failed to track request metrics: {str(e)}", exc_info=True)
+            logger.error(f"Failed to observe errors: {str(e)}")
+            return [metrics.Observation(value=0, attributes={
+                "method": "GET",
+                "path": "/",
+                "status_code": "200",
+                "error_type": "none"
+            })]
 
-    def track_cart_update(self, user_id: int, change: int):
-        """Track cart item changes."""
-        self.cart_items.add(change, {"user_id": str(user_id)})
+    def _observe_cart_items(self, options):
+        """Real-time observer for cart items from database."""
+        try:
+            from app.core.database import SessionLocal
+            from app.models.models import CartItem
+            
+            db = SessionLocal()
+            try:
+                # Get current cart totals for all users
+                results = db.query(
+                    CartItem.user_id,
+                    func.coalesce(func.sum(CartItem.quantity), 0).label('total')
+                ).group_by(CartItem.user_id).all()
 
-    def track_order(self, user_id: int, amount: float):
-        """Track order placement."""
-        self.order_total.add(amount, {"user_id": str(user_id)})
+                # Return measurements for each user
+                return [
+                    metrics.Observation(value=int(total), attributes={"user_id": str(user_id)})
+                    for user_id, total in results
+                ] or [metrics.Observation(value=0, attributes={"user_id": "0"})]
 
-    def track_user_activity(self, user_id: int, active: bool = True):
-        """Track user activity."""
-        self.active_users.add(1 if active else -1, {"user_id": str(user_id)})
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to observe cart items: {str(e)}")
+            return [metrics.Observation(value=0, attributes={"user_id": "0"})]
+
+    def track_request(self, method: str, path: str, status_code: int, duration_seconds: float):
+        """Track request metrics.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: Request path
+            status_code: HTTP status code
+            duration_seconds: Request duration in seconds
+        """
+        # Track request latency
+        attributes = {
+            "method": method,
+            "path": path,
+            "status_code": str(status_code)
+        }
+        self.request_latency.record(duration_seconds, attributes)
+        
+        # Store errors in database for real-time tracking
+        if status_code >= 400:
+            try:
+                from app.core.database import SessionLocal
+                
+                error_type = "client" if status_code < 500 else "server"
+                db = SessionLocal()
+                try:
+                    error_metric = self.ErrorMetric(
+                        method=method,
+                        path=path,
+                        status_code=status_code,
+                        error_type=error_type
+                    )
+                    db.add(error_metric)
+                    db.commit()
+                    logger.info(f"Stored error metric: method={method}, path={path}, status={status_code}, type={error_type}")
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"Failed to store error metric: {str(e)}")
 
 
 class TelemetryMiddleware(BaseHTTPMiddleware):
@@ -106,21 +189,17 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
             
         start_time = time()
         response = await call_next(request)
+        duration = time() - start_time
         
         if telemetry := get_telemetry():
-            duration_ms = (time() - start_time) * 1000
             telemetry.track_request(
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
-                duration_ms=duration_ms
+                duration_seconds=duration
             )
             
         return response
-
-
-# Global telemetry instance
-_telemetry = None
 
 
 def setup_telemetry(app: FastAPI = None) -> None:
@@ -136,57 +215,43 @@ def setup_telemetry(app: FastAPI = None) -> None:
     try:
         global _telemetry
         
-        # Common configuration
-        endpoint = settings.get_formatted_endpoint()
-        is_local = "localhost" in endpoint
-        exporter_args = {
-            "endpoint": endpoint,
-            "timeout": settings.OTEL_METRIC_EXPORT_TIMEOUT,
-            **({"insecure": True} if is_local else {"headers": settings.otel_headers_dict})
-        }
-        
-        # Common resource
-        resource = Resource.create(settings.otel_resource_attributes)
+        # Setup metrics with faster refresh
+        resource = Resource.create({
+            "service.name": settings.OTEL_SERVICE_NAME,
+            "service.version": settings.APP_VERSION
+        })
 
-        # Setup metrics
-        metrics.set_meter_provider(MeterProvider(
-            metric_readers=[PeriodicExportingMetricReader(
-                OTLPMetricExporter(**exporter_args),
-                export_interval_millis=settings.OTEL_METRIC_EXPORT_INTERVAL_MS
-            )],
+        reader = PeriodicExportingMetricReader(
+            OTLPMetricExporter(
+                endpoint=settings.get_formatted_endpoint(),
+                insecure=True if "localhost" in settings.OTEL_EXPORTER_OTLP_ENDPOINT else False,
+                headers=settings.otel_headers_dict,
+                timeout=5  # 5 second timeout
+            ),
+            export_interval_millis=1000  # 1 second refresh
+        )
+
+        provider = MeterProvider(
+            metric_readers=[reader],
             resource=resource
-        ))
-        _telemetry = Telemetry(metrics.get_meter(settings.OTEL_SERVICE_NAME))
+        )
         
-        # Add telemetry middleware if app provided
+        metrics.set_meter_provider(provider)
+        _telemetry = Telemetry(metrics.get_meter("xcart"))
+        
+        # Add telemetry middleware
         if app:
             app.add_middleware(TelemetryMiddleware)
             
-        logger.info("OpenTelemetry initialized successfully")
+        logger.info("OpenTelemetry initialized with real-time metrics")
             
     except Exception as e:
         logger.error(f"Failed to initialize OpenTelemetry: {e}")
-        if "Overriding of current MeterProvider is not allowed" in str(e):
-            _telemetry = Telemetry(metrics.get_meter(settings.OTEL_SERVICE_NAME))
 
+
+# Global telemetry instance
+_telemetry = None
 
 def get_telemetry():
     """Get the global telemetry instance."""
-    return _telemetry
-
-
-# Convenience functions for business metrics
-def track_cart_items(user_id: int, change: int):
-    """Track changes in cart items."""
-    if settings.OTEL_ENABLED and (telemetry := get_telemetry()):
-        telemetry.track_cart_update(user_id, change)
-
-def track_order_total(user_id: int, amount: float):
-    """Track order amounts."""
-    if settings.OTEL_ENABLED and (telemetry := get_telemetry()):
-        telemetry.track_order(user_id, amount)
-
-def track_user_activity(user_id: int, active: bool = True):
-    """Track user activity."""
-    if settings.OTEL_ENABLED and (telemetry := get_telemetry()):
-        telemetry.track_user_activity(user_id, active) 
+    return _telemetry 
