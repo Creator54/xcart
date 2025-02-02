@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, SessionLocal
 from app.core.logging import setup_logging, get_logger
-from app.core.telemetry import setup_telemetry, TelemetryMiddleware
+from app.core.telemetry import setup_telemetry
 from app.core.config import settings
 from app.models import models
 from app.routers import auth, products, cart, orders
@@ -61,9 +61,6 @@ def create_app() -> FastAPI:
         allow_methods=settings.CORS_ALLOW_METHODS,
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
-
-    # Add telemetry middleware
-    app.add_middleware(TelemetryMiddleware)
 
     # Include routers
     app.include_router(auth.router, prefix="/auth", tags=["auth"])

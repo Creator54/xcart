@@ -60,14 +60,10 @@ class Settings(BaseSettings):
     # OpenTelemetry settings
     OTEL_ENABLED: bool = True
     OTEL_SERVICE_NAME: str = os.getenv("OTEL_RESOURCE_ATTRIBUTES").split("=")[1]
-    OTEL_EXPORTER_OTLP_ENDPOINT: str = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", ""
-    ).strip()
-    OTEL_EXPORTER_OTLP_HEADERS: str = os.getenv(
-        "OTEL_EXPORTER_OTLP_HEADERS", ""
-    ).strip()
-    OTEL_METRIC_EXPORT_INTERVAL_MS: int = 5000
-    OTEL_METRIC_EXPORT_TIMEOUT: int = 5
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    OTEL_EXPORTER_OTLP_HEADERS: str = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "").strip()
+    OTEL_METRIC_EXPORT_INTERVAL_MS: int = 5000  # Increased to 5 seconds
+    OTEL_METRIC_EXPORT_TIMEOUT: int = 10  # Increased timeout
     DEPLOYMENT_ENV: str = os.getenv("DEPLOYMENT_ENV", "development")
 
     # Logging settings

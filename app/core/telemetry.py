@@ -1,15 +1,14 @@
-from opentelemetry import metrics, trace
+"""OpenTelemetry instrumentation for application monitoring."""
+
+from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from time import time
+import os
 from .config import settings
 from .logging import get_logger
 
@@ -26,6 +25,12 @@ class Telemetry:
         self.http_requests = self.meter.create_counter(
             name=f"{settings.OTEL_SERVICE_NAME}_http_requests",
             description="Total HTTP requests",
+            unit="1"
+        )
+        
+        self.http_errors = self.meter.create_counter(
+            name=f"{settings.OTEL_SERVICE_NAME}_http_errors",
+            description="Total HTTP error requests",
             unit="1"
         )
         
@@ -56,13 +61,28 @@ class Telemetry:
 
     def track_request(self, method: str, path: str, status_code: int, duration_ms: float):
         """Track HTTP request metrics."""
-        attributes = {
-            "method": method,
-            "path": path,
-            "status_code": str(status_code),
-        }
-        self.http_requests.add(1, attributes)
-        self.request_latency.record(duration_ms, attributes)
+        try:
+            attributes = {
+                "method": method,
+                "path": path,
+                "status_code": str(status_code)
+            }
+            
+            # Track all requests
+            self.http_requests.add(1, attributes)
+            self.request_latency.record(duration_ms, attributes)
+            
+            # Track error requests (4xx and 5xx)
+            if status_code >= 400:
+                error_attributes = {
+                    **attributes,
+                    "error_type": "client" if status_code < 500 else "server"
+                }
+                logger.info(f"Recording error metric - Method: {method}, Path: {path}, Status: {status_code}")
+                self.http_errors.add(1, error_attributes)
+                
+        except Exception as e:
+            logger.error(f"Failed to track request metrics: {str(e)}", exc_info=True)
 
     def track_cart_update(self, user_id: int, change: int):
         """Track cart item changes."""
@@ -88,11 +108,12 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         if telemetry := get_telemetry():
+            duration_ms = (time() - start_time) * 1000
             telemetry.track_request(
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
-                duration_ms=(time() - start_time) * 1000,
+                duration_ms=duration_ms
             )
             
         return response
@@ -137,12 +158,9 @@ def setup_telemetry(app: FastAPI = None) -> None:
         ))
         _telemetry = Telemetry(metrics.get_meter(settings.OTEL_SERVICE_NAME))
         
-        # Setup tracing if app provided
+        # Add telemetry middleware if app provided
         if app:
-            tracer = TracerProvider(resource=resource)
-            trace.set_tracer_provider(tracer)
-            tracer.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(**exporter_args)))
-            FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer)
+            app.add_middleware(TelemetryMiddleware)
             
         logger.info("OpenTelemetry initialized successfully")
             
