@@ -54,8 +54,6 @@ class Settings(BaseSettings):
 
     # Business logic settings
     MIN_ORDER_AMOUNT: float = 24.99
-    MAX_CART_ITEMS: int = 10
-    MAX_QUANTITY_PER_ITEM: int = 5
 
     # OpenTelemetry settings
     OTEL_ENABLED: bool = True

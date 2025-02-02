@@ -29,17 +29,6 @@ def add_to_cart(
         logger.warning(f"User {current_user.email} tried to add non-existent product {item.product_id}")
         raise HTTPException(status_code=404, detail="Product not found")
     
-    # Check quantity limits
-    if item.quantity > settings.MAX_QUANTITY_PER_ITEM:
-        logger.warning(f"User {current_user.email} tried to add {item.quantity} items (max: {settings.MAX_QUANTITY_PER_ITEM})")
-        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_QUANTITY_PER_ITEM} items per product allowed")
-    
-    # Check total cart items
-    current_items = len(current_user.cart_items)
-    if current_items >= settings.MAX_CART_ITEMS:
-        logger.warning(f"User {current_user.email} tried to exceed max cart items ({settings.MAX_CART_ITEMS})")
-        raise HTTPException(status_code=400, detail=f"Maximum {settings.MAX_CART_ITEMS} items in cart allowed")
-    
     cart_item = models.CartItem(
         user_id=current_user.id,
         product_id=item.product_id,
