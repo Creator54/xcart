@@ -25,14 +25,29 @@ pip install -r requirements.txt
 
 # Configure SigNoz monitoring
 # For Cloud:
+export OTEL_RESOURCE_ATTRIBUTES="service.name=xcart-v1"
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.{region}.signoz.cloud:443"
 export OTEL_EXPORTER_OTLP_HEADERS="signoz-access-token={your-token}"
 
 # For Self-Hosted:
+export OTEL_RESOURCE_ATTRIBUTES="service.name=xcart-v1"
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 
 # Start server
 bash start.sh  # or: uvicorn app.main:app
+```
+
+### Run with Docker
+```bash
+# Build Docker image
+docker build -t xcart .
+
+# Run container
+docker run -e OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.{region}.signoz.cloud:443" \
+-e OTEL_EXPORTER_OTLP_HEADERS="signoz-access-token={your-token}" \
+-e OTEL_RESOURCE_ATTRIBUTES="service.name=xcart_v1" \
+-p 8000:8000 \
+xcart
 ```
 
 Access API documentation at: http://localhost:8000/docs
