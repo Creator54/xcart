@@ -90,24 +90,44 @@
           name = "xcart";
           runtimeInputs = [ pkgs.curl ] ++ signozShell.buildInputs;
           text = ''
+            # Function to cleanup on exit
+            cleanup() {
+              echo -e "\n🛑 Shutting down XCart..."
+              
+              # Kill xcart process if it's running
+              if [ -n "$XCART_PID" ]; then
+                kill $XCART_PID 2>/dev/null || true
+                # Wait briefly for graceful shutdown
+                wait $XCART_PID 2>/dev/null || true
+              fi
+              
+              # Stop SigNoz if we're using localhost
+              if [[ "$OTLP_ENDPOINT" == *"localhost"* ]]; then
+                echo -e "🛑 Stopping SigNoz..."
+                stop-signoz
+              fi
+              
+              echo -e "✨ Cleanup complete"
+              exit 0
+            }
+
+            # Setup trap for cleanup
+            trap cleanup INT TERM
+
             # Get the OTLP endpoint from args or default to localhost
             OTLP_ENDPOINT="''${1:-http://localhost:4317}"
             
             # Only check and start local SigNoz if using localhost
             if [[ "$OTLP_ENDPOINT" == *"localhost"* ]]; then
-              if curl -s http://localhost:3301 > /dev/null; then
-                echo -e "\n✅ SigNoz is already running"
-                echo "  • Dashboard: http://localhost:3301"
-              else
-                echo -e "\n🚀 Starting SigNoz..."
-                # Use signoz's start-signoz script
-                start-signoz
-                ${signoz-health-check}/bin/signoz-health-check
-              fi
+              ${signozShell.shellHook or ""}
             fi
 
             echo -e "\n🔄 Starting XCart with SigNoz integration..."
-            exec ${xcart-service}/bin/xcart-service "$@"
+            ${xcart-service}/bin/xcart-service "$@" &
+            XCART_PID=$!
+
+            # Wait for xcart to exit or signal
+            wait $XCART_PID
           '';
         };
       in
