@@ -40,14 +40,29 @@
               
               # Set environment variables
               export OTEL_RESOURCE_ATTRIBUTES=service.name=xcart-v1
-              export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+              
+              # Check if an argument is provided
+              if [ -n "$1" ]; then
+                # If an argument is provided, use it as the OTLP endpoint
+                echo "Using provided OTLP endpoint: $1"
+              else
+                echo "Using default OTLP endpoint: http://localhost:4317"
+              fi
+
+              # If an argument is provided, use it as the OTLP endpoint
+              if [ -n "$1" ]; then
+                export OTEL_EXPORTER_OTLP_ENDPOINT="$1"
+                export OTEL_EXPORTER_OTLP_HEADERS="signoz-access-token=$2"
+              else
+                export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+              fi
               
               # Add required libraries to LD_LIBRARY_PATH
               export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
               
               # Run the application
               exec uvicorn app.main:app --reload --port 8000
-            '
+            ' _ "$@"  # Add _ as $0 and "$@" to pass all arguments
           '';
         };
 

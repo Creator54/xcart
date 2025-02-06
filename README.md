@@ -52,10 +52,13 @@ xcart
 
 ### Run with Nix
 ```bash
-# Run directly (will create working directory at ~/.local/share/xcart)
+# Run directly (will create working directory at ~/.local/share/xcart), default OTLP endpoint is http://localhost:4317
 nix run --refresh github:creator54/xcart
 
-# Or enter development shell (will create working directory at current directory)
+# Run with custom OTLP endpoint (will create working directory at ~/.local/share/xcart)
+nix run --refresh github:creator54/xcart -- "https://ingest.{region}.signoz.cloud:443" "{your-token}"
+
+# Or enter development shell (will create working directory at current directory), default OTLP endpoint is http://localhost:4317
 nix develop --refresh github:creator54/xcart
 ```
 
