@@ -53,13 +53,14 @@ xcart
 ### Run with Nix
 ```bash
 # Run directly (will create working directory at ~/.local/share/xcart), default OTLP endpoint is http://localhost:4317
-nix run --refresh github:creator54/xcart
+# This will start SigNoz if it's not already running via podman
+nix run --refresh github:creator54/xcart/multi-shell
 
 # Run with custom OTLP endpoint (will create working directory at ~/.local/share/xcart)
-nix run --refresh github:creator54/xcart -- "https://ingest.{region}.signoz.cloud:443" "{your-token}"
+nix run --refresh github:creator54/xcart/multi-shell -- "https://ingest.{region}.signoz.cloud:443" "{your-token}"
 
 # Or enter development shell (will create working directory at current directory), default OTLP endpoint is http://localhost:4317
-nix develop --refresh github:creator54/xcart
+nix develop --refresh github:creator54/xcart/multi-shell
 ```
 
 Note: The Nix setup automatically handles:
