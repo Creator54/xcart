@@ -57,6 +57,16 @@
           ];
           
           shellHook = oldAttrs.shellHook + ''
+            # Check if we're already in a xcart directory
+            if [ ! -f "app/main.py" ]; then
+              echo "Setting up XCart in current directory..."
+              
+              # Copy source files to current directory
+              cp -r ${xcart-src}/* .
+              chmod -R u+w .
+            fi
+            
+            # Set environment variables
             export OTEL_RESOURCE_ATTRIBUTES=service.name=xcart-v1
             export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
             export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"

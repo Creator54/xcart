@@ -50,6 +50,20 @@ docker run -e OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.{region}.signoz.cloud:
 xcart
 ```
 
+### Run with Nix
+```bash
+# Run directly (will create working directory at ~/.local/share/xcart)
+nix run --refresh github:creator54/xcart
+
+# Or enter development shell (will create working directory at current directory)
+nix develop --refresh github:creator54/xcart
+```
+
+Note: The Nix setup automatically handles:
+- Python environment and dependencies
+- Working directory management
+- OpenTelemetry configuration for local development (SigNoz needs to be started manually)
+
 Access API documentation at: http://localhost:8000/docs
 
 ## API Endpoints
